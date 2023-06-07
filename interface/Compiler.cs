@@ -46,15 +46,13 @@ namespace @interface
             if (richTextBoxInput.Text != string.Empty)
             {
                 LexicalAnalyzer.Tokenize(richTextBoxInput.Text);
-                Parser.Parse();
-                if (Parser.GetErrors().Count == 0)
+                List<Token> tokens = Token.GetTokens();
+                foreach (Token token in tokens) 
                 {
-                    richTextBoxOutput.Text = "Ошибок нет!";
-                }
-                else
-                {
-                    richTextBoxOutput.Text = ParseErrors.ErrorsOut();
-                    Parser.ClearErrorList();
+                    if (token.SinglePos())
+                        richTextBoxOutput.Text += $"{token.GetIndex()} {token.GetTokenType(),-15} {token.GetValue(), -15} ({token.GetPosStart()+1})\n";
+                    else
+                        richTextBoxOutput.Text += $"{token.GetIndex()} {token.GetTokenType(),-15} {token.GetValue(),-15} ({token.GetPosStart()+1} - {token.GetPosEnd()})\n";
                 }
             }
         }

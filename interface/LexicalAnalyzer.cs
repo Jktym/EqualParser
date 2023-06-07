@@ -1,32 +1,21 @@
 ﻿using @interface;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Security.Cryptography;
-
-public enum TokenType
-{
-    Letter,     //Буква
-    Число_без_знака,     //Цифра
-    Идентификатор, //Идентификатор
-    Separator,  //Разделитель
-    Plus,       //Плюс
-    Minus,      //Минус
-    Mult,       //Умножение
-    Div,        //Деление
-    Degree,     //Возведение в степень
-    Оператор_присваивания,      //Оператор присваивания
-    BracketR,   //Правая скобка
-    BracketL,   //Левая скобка
-    Double,     //Вещественное число
-    EndOfLine,  //Конец строки
-    Invalid,    //Недопустимый символ
-    EndOfInput  //Конец обрабатываемого текста
-}
+using System.Xml.Linq;
 
 public static class LexicalAnalyzer
 {
-    // Перечисление для описания типов лексем
-
+    // Словарь для хранения ключевых слов
+    private static readonly Dictionary<string, TokenType> keywords = new Dictionary<string, TokenType>()
+    {
+        { "var", TokenType.Ключевое_слово },
+        { "int", TokenType.Ключевое_слово },
+        { "real", TokenType.Ключевое_слово },
+        { "begin", TokenType.Ключевое_слово },
+        { "end", TokenType.Ключевое_слово }
+    };
     // Метод для проверки, является ли символ буквой
     private static bool IsLetter(char c)
     {
@@ -43,33 +32,135 @@ public static class LexicalAnalyzer
     {
         if (Token.GetTokens() != null)
             Token.TokensClear();
-        char liter;
+        char c;
+        int line = 0;
         int pos = 0;
-        int number = 0;
+        int count = 0;
         int startPos;
         while (pos < input.Length)
         {
-            liter = input[pos];
-            if (char.IsWhiteSpace(liter))
+            c = input[pos];
+            // Если текущий символ является разделителем, пропускаем его
+            if (char.IsWhiteSpace(c))
             {
+                // Если это пробел или перевод строки, добавляем соответствующую лексему
+                if (c == ' ')
+                {
+                    new Token(TokenType.Разделитель, "Пробел", count++, pos, pos);
+                }
+                else if (c == '\n')
+                {
+                    new Token(TokenType.Конец_строки, "Конец строки", count++, pos, pos);
+                    line++;
+                }
+                else if (c == '\t')
+                {
+                    new Token(TokenType.Разделитель, "Таб", count++, pos, pos);
+                }
                 pos++;
                 continue;
             }
 
-            if (IsLetter(liter))
+            // Если текущий символ является оператором присваивания (=)
+            if (c == '=')
             {
-                startPos = pos;
-                while (pos < input.Length && (IsLetter(input[pos]) || IsDigit(input[pos])))
-                    pos++;
-                new Token(TokenType.Идентификатор, input.Substring(startPos, pos - startPos), number++, startPos, pos);
+                new Token(TokenType.Оператор_присваивания, "=", count++, pos, pos);
+                pos++;
+                continue;
+            }
+            // Если текущий символ является концом оператора (;)
+            if (c == ';')
+            {
+                new Token(TokenType.Разделитель, ";", count++, pos, pos);
+                pos++;
                 continue;
             }
 
-            if (IsDigit(liter))
+            // Если текущий символ является скобкой [(] - открытие скобки или комментария
+            if (c == '(')
+            {
+                startPos = pos;
+                if (pos + 1 < input.Length && input[pos+1] == '*')
+                {
+                    string comment = "(*";
+                    pos += 2;
+                    while (pos < input.Length && input[pos] != '*')
+                    {
+                        comment += input[pos];
+                        pos++;
+                    }
+                    if (input[pos] == '*')
+                    { comment += "*";
+                        if (input[pos+1] == ')')
+                        {
+                            comment += ")";
+                            new Token(TokenType.Комментарий, comment, count++, startPos, pos);
+                        }
+                    }
+                    else
+                    {
+                        new Token(TokenType.Неизвестный_токен, comment, count++, startPos, pos);
+                    }
+                }
+                else
+                {
+                    string expr = "(";
+                    pos++;
+                    // Пока не найдем закрывающую скобку 
+                    while (pos < input.Length && input[pos] != ')')
+                    {
+                        expr += input[pos];
+                        pos++;
+                    }
+
+                    // Если нашли закрывающую скобку, то добавляем лексему в список
+                    if (pos < input.Length && input[pos] == ')')
+                    {
+                        expr += ")";
+                        new Token(TokenType.Выражение, expr, count++, startPos, pos);
+                        pos++;
+                    }
+
+                    else // Иначе скобка не была закрыта - это ошибка
+                    { 
+                        new Token(TokenType.Неизвестный_токен, expr, count++, startPos, pos);
+                        pos++;
+                    }
+                }
+                continue;
+            }
+
+            // Если текущий символ является буквой, то это может быть ключевое слово или идентификатор
+            if (IsLetter(c))
+            {
+                startPos = pos;
+                string word = "";
+                // Пока текущий символ является буквой или цифрой, добавляем его к слову
+                while (pos < input.Length && (IsLetter(input[pos]) || IsDigit(input[pos])))
+                {
+                    word += input[pos];
+                    pos++;
+                }
+
+                // Если слово является ключевым, то добавляем лексему в список
+                if (keywords.ContainsKey(word))
+                {
+                    new Token(TokenType.Ключевое_слово, word, count++, startPos, pos);
+                }
+                else // Иначе это идентификатор
+                {
+                    new Token(TokenType.Идентификатор, word, count++, startPos, pos);
+                }
+
+                continue;
+            }
+
+            if (IsDigit(c))
             {
                 startPos = pos;
                 bool hasPoint = false;
                 bool invalid = false;
+                string number = "";
                 while (pos < input.Length && (IsDigit(input[pos]) || (!hasPoint && (input[pos] == '.' || input[pos] == ','))))
                 {
                     if (input[pos] == '.' || input[pos] == ',')
@@ -77,54 +168,24 @@ public static class LexicalAnalyzer
                     pos++;
                 }
                 if (invalid)
-                    new Token(TokenType.Invalid, input.Substring(startPos, pos - startPos), number++, startPos, pos);
+                    new Token(TokenType.Неизвестный_токен, number , count++, startPos, pos);
+                else if(hasPoint)
+                    new Token(TokenType.Вещественное_число, number, count++, startPos, pos);
                 else
-                    new Token(TokenType.Число_без_знака, input.Substring(startPos, pos - startPos), number++, startPos, pos);
+                    new Token(TokenType.Целое_число, number, count++, startPos, pos);
                 continue;
             }
-
-            switch (liter)
+            else
             {
-                case '+':
-                    new Token(TokenType.Plus, input.Substring(pos, 1), number++, pos, pos);
+                startPos = pos;
+                string invalid = "";
+                while(pos < input.Length && (!IsDigit(input[pos]) || !IsLetter(input[pos])))
+                {
+                    invalid += input[pos];
                     pos++;
-                    break;
-                case '-':
-                    new Token(TokenType.Minus, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
-                case '*':
-                        if (pos + 1 < input.Length && input[pos + 1] == '*')
-                        {
-                            new Token(TokenType.Degree, input.Substring(pos, 2), number++, pos, pos+1);
-                            pos += 2;
-                        }
-                        else
-                        {
-                            new Token(TokenType.Mult, input.Substring(pos, 1), number++, pos, pos);
-                            pos++;
-                        }
-                    break;
-                case '/':
-                    new Token(TokenType.Div, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
-                case '=':
-                    new Token(TokenType.Оператор_присваивания, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
-                case '(':
-                    new Token(TokenType.BracketL, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
-                case ')':
-                    new Token(TokenType.BracketR, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
-                default:
-                    new Token(TokenType.Invalid, input.Substring(pos, 1), number++, pos, pos);
-                    pos++;
-                    break;
+                }
+                new Token(TokenType.Неизвестный_токен, invalid, count++, startPos, pos);
+                continue;
             }
         }
     }
